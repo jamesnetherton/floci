@@ -242,11 +242,17 @@ public class SecretsManagerJsonHandler {
     }
 
     private Response handleListSecrets(JsonNode request, String region) {
-        List<Secret> secrets = service.listSecrets(region);
+        Integer maxResults = request.has("MaxResults") ? request.path("MaxResults").asInt() : null;
+        String nextToken = request.has("NextToken") ? request.path("NextToken").asText(null) : null;
+
+        SecretsManagerService.ListSecretsResult result = service.listSecrets(region, maxResults, nextToken);
 
         ObjectNode response = objectMapper.createObjectNode();
+        if (result.nextToken() != null) {
+            response.put("NextToken", result.nextToken());
+        }
         ArrayNode secretList = objectMapper.createArrayNode();
-        for (Secret secret : secrets) {
+        for (Secret secret : result.secrets()) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("ARN", secret.getArn());
             node.put("Name", secret.getName());

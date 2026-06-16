@@ -176,7 +176,7 @@ class SecretsManagerServiceTest {
         service.createSecret("secret-2", "v2", null, null, null, null, REGION);
         service.createSecret("other-region", "v3", null, null, null, null, "eu-west-1");
 
-        List<Secret> secrets = service.listSecrets(REGION);
+        List<Secret> secrets = service.listSecrets(REGION, null, null).secrets();
         assertEquals(2, secrets.size());
     }
 
@@ -186,9 +186,44 @@ class SecretsManagerServiceTest {
         service.createSecret("deleted", "v2", null, null, null, null, REGION);
         service.deleteSecret("deleted", 0, true, REGION);
 
-        List<Secret> secrets = service.listSecrets(REGION);
+        List<Secret> secrets = service.listSecrets(REGION, null, null).secrets();
         assertEquals(1, secrets.size());
         assertEquals("active", secrets.getFirst().getName());
+    }
+
+    @Test
+    void listSecretsMaxResults() {
+        for (int i = 1; i <= 5; i++) {
+            service.createSecret("secret-" + i, "v" + i, null, null, null, null, REGION);
+        }
+
+        SecretsManagerService.ListSecretsResult page1 = service.listSecrets(REGION, 2, null);
+        assertEquals(List.of("secret-1", "secret-2"), page1.secrets().stream().map(Secret::getName).toList());
+        assertNotNull(page1.nextToken());
+
+        SecretsManagerService.ListSecretsResult page2 = service.listSecrets(REGION, 2, page1.nextToken());
+        assertEquals(List.of("secret-3", "secret-4"), page2.secrets().stream().map(Secret::getName).toList());
+        assertNotNull(page2.nextToken());
+
+        SecretsManagerService.ListSecretsResult page3 = service.listSecrets(REGION, 2, page2.nextToken());
+        assertEquals(List.of("secret-5"), page3.secrets().stream().map(Secret::getName).toList());
+        assertNull(page3.nextToken());
+    }
+
+    @Test
+    void listSecretsMaxResultsCoversAll() {
+        service.createSecret("secret-a", "v1", null, null, null, null, REGION);
+        service.createSecret("secret-b", "v2", null, null, null, null, REGION);
+
+        SecretsManagerService.ListSecretsResult result = service.listSecrets(REGION, 10, null);
+        assertEquals(2, result.secrets().size());
+        assertNull(result.nextToken());
+    }
+
+    @Test
+    void listSecretsInvalidNextTokenThrows() {
+        service.createSecret("secret-a", "v1", null, null, null, null, REGION);
+        assertThrows(AwsException.class, () -> service.listSecrets(REGION, null, "not-a-number"));
     }
 
     @Test

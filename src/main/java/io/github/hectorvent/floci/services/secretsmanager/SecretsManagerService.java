@@ -14,6 +14,7 @@ import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -239,11 +240,34 @@ public class SecretsManagerService {
         return secret;
     }
 
-    public List<Secret> listSecrets(String region) {
+    public record ListSecretsResult(List<Secret> secrets, String nextToken) {}
+
+    public ListSecretsResult listSecrets(String region, Integer maxResults, String nextToken) {
         String prefix = region + "::";
-        return store.scan(key -> key.startsWith(prefix) && store.get(key)
+        List<Secret> all = store.scan(key -> key.startsWith(prefix) && store.get(key)
                 .map(s -> s.getDeletedDate() == null)
                 .orElse(false));
+        all.sort(Comparator.comparing(Secret::getName));
+
+        int limit = maxResults != null && maxResults > 0 ? maxResults : 100;
+        limit = Math.min(limit, 100);
+        int offset = 0;
+        if (nextToken != null && !nextToken.isBlank()) {
+            try {
+                offset = Integer.parseInt(nextToken);
+            } catch (NumberFormatException e) {
+                throw new AwsException("InvalidNextTokenException", "The NextToken value is invalid.", 400);
+            }
+        }
+
+        if (offset >= all.size()) {
+            return new ListSecretsResult(List.of(), null);
+        }
+
+        int end = Math.min(offset + limit, all.size());
+        List<Secret> page = all.subList(offset, end);
+        String outToken = end < all.size() ? String.valueOf(end) : null;
+        return new ListSecretsResult(page, outToken);
     }
 
     public Secret deleteSecret(String secretId, Integer recoveryWindowInDays, boolean forceDelete, String region) {
